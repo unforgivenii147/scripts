@@ -1,0 +1,298 @@
+#!/data/data/com.termux/files/usr/bin/python
+
+import shutil
+import tarfile
+from pathlib import Path
+import apt
+import apt_pkg
+import os
+import time
+
+BASE_DIR = Path.home() / "debs"
+BASE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Initialize apt system
+apt_pkg.init_system()
+
+
+def get_installed_packages() -> list[str]:
+    """Get list of installed packages using python-apt"""
+    cache = apt.Cache()
+    return [pkg.name for pkg in cache if pkg.is_installed]
+
+
+def get_package_files(pkg_name: str) -> list[str]:
+    """Get files installed by a package using dpkg database directly"""
+    try:
+        # Read dpkg info directory
+        dpkg_info_dir = Path("/data/data/com.termux/files/usr/var/lib/dpkg/info")
+        list_file = dpkg_info_dir / f"{pkg_name}.list"
+
+        if not list_file.exists():
+            return []
+
+        files = list_file.read_text().splitlines()
+        # Filter only existing files and directories
+        return [f for f in files if Path(f).exists()]
+    except Exception:
+        return []
+
+
+def get_package_metadata(pkg_name: str) -> dict[str, str]:
+    """Get package metadata using python-apt"""
+    cache = apt.Cache()
+
+    if pkg_name not in cache:
+        raise ValueError(f"Package {pkg_name} not found")
+
+    pkg = cache[pkg_name]
+
+    # Get version
+    if pkg.is_installed:
+        version = pkg.installed.version
+    else:
+        version = pkg.candidate.version
+
+    # Get architecture
+    architecture = pkg.architecture or "all"
+
+    # Get description - handle different attribute names
+    try:
+        # Try different possible attribute names
+        if hasattr(pkg, "description"):
+            description = pkg.description
+        elif hasattr(pkg, "candidate") and hasattr(pkg.candidate, "description"):
+            description = pkg.candidate.description
+        else:
+            # Read from dpkg status file
+            status_file = Path("/data/data/com.termux/files/usr/var/lib/dpkg/status")
+            if status_file.exists():
+                content = status_file.read_text()
+                # Find package section
+                sections = content.split("\n\n")
+                for section in sections:
+                    if f"Package: {pkg_name}" in section:
+                        lines = section.split("\n")
+                        for line in lines:
+                            if line.startswith("Description:"):
+                                desc = line.replace("Description:", "").strip()
+                                # Get continuation lines
+                                desc_lines = [desc]
+                                idx = lines.index(line) + 1
+                                while idx < len(lines) and lines[idx].startswith(" "):
+                                    desc_lines.append(lines[idx].strip())
+                                    idx += 1
+                                description = " ".join(desc_lines)
+                                break
+                        break
+                else:
+                    description = "No description available"
+            else:
+                description = "No description available"
+    except:
+        description = "No description available"
+
+    # Get maintainer
+    try:
+        if hasattr(pkg, "maintainer"):
+            maintainer = pkg.maintainer
+        elif hasattr(pkg, "candidate") and hasattr(pkg.candidate, "maintainer"):
+            maintainer = pkg.candidate.maintainer
+        else:
+            # Try to read from status file
+            status_file = Path("/data/data/com.termux/files/usr/var/lib/dpkg/status")
+            if status_file.exists():
+                content = status_file.read_text()
+                sections = content.split("\n\n")
+                for section in sections:
+                    if f"Package: {pkg_name}" in section:
+                        lines = section.split("\n")
+                        for line in lines:
+                            if line.startswith("Maintainer:"):
+                                maintainer = line.replace("Maintainer:", "").strip()
+                                break
+                        break
+                else:
+                    maintainer = "Unknown Maintainer"
+            else:
+                maintainer = "Unknown Maintainer"
+    except:
+        maintainer = "Unknown Maintainer"
+
+    return {
+        "Package": pkg_name,
+        "Version": version,
+        "Architecture": architecture,
+        "Maintainer": maintainer,
+        "Description": description.replace("\n", " ").strip(),
+    }
+
+
+def create_control_file(path: Path, meta: dict[str, str]) -> None:
+    """Create DEBIAN/control file"""
+    control_content = (
+        f"Package: {meta['Package']}\n"
+        f"Version: {meta['Version']}\n"
+        f"Architecture: {meta['Architecture']}\n"
+        f"Maintainer: {meta['Maintainer']}\n"
+        f"Description: {meta['Description']}\n"
+    )
+    (path / "control").write_text(control_content)
+
+
+def copy_pkg_files(files: list[str], dest: Path) -> None:
+    """Copy package files to destination directory"""
+    for f in files:
+        # Skip if it's a directory or special file
+        path = Path(f)
+        if not path.is_file():
+            continue
+
+        target = dest / f.lstrip("/")
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # Copy file preserving metadata
+            shutil.copy2(f, target)
+            # Preserve permissions
+            stat_info = os.stat(f)
+            os.chmod(target, stat_info.st_mode)
+        except (PermissionError, OSError, shutil.Error):
+            # Fallback to reading content if copy fails
+            try:
+                content = path.read_bytes()
+                target.write_bytes(content)
+                # Try to set permissions
+                try:
+                    os.chmod(target, path.stat().st_mode)
+                except:
+                    pass
+            except:
+                pass
+
+
+def build_tar_xz(source_dir: Path, output_path: Path) -> None:
+    """Create tar.xz archive from source directory"""
+    with tarfile.open(output_path, "w:xz") as tar:
+        tar.add(source_dir, arcname=".")
+
+
+def create_ar_archive(output_path: Path, files: list[tuple[str, bytes]]) -> None:
+    """Create ar archive without external libraries"""
+    with open(output_path, "wb") as f:
+        # Write ar magic header
+        f.write(b"!<arch>\n")
+
+        for name, content in files:
+            # Pad name to 16 bytes
+            name_bytes = name.encode("ascii")
+            if len(name_bytes) > 16:
+                name_bytes = name_bytes[:16]
+            name_padded = name_bytes.ljust(16, b" ")
+
+            # Size of content
+            size = len(content)
+            size_str = str(size).encode("ascii")
+            size_padded = size_str.rjust(10, b" ")
+
+            # Current timestamp
+            timestamp = str(int(time.time())).encode("ascii")
+            timestamp_padded = timestamp.rjust(12, b" ")
+
+            # Write header
+            header = (
+                name_padded  # name (16)
+                + timestamp_padded  # timestamp (12)
+                + b"0" * 6  # owner ID (6)
+                + b"0" * 6  # group ID (6)
+                + b"100644 "  # mode (8)
+                + size_padded  # size (10)
+                + b"\x60\x0a"  # magic (2)
+            )
+            f.write(header)
+
+            # Write content
+            f.write(content)
+
+            # Pad to even size
+            if size % 2 == 1:
+                f.write(b"\n")
+
+
+def build_deb(pkg_dir: Path, output_deb: Path) -> None:
+    """Build .deb package from package directory"""
+    debian_binary_content = b"2.0\n"
+    control_tar_path = pkg_dir / "control.tar.xz"
+    data_tar_path = pkg_dir / "data.tar.xz"
+
+    # Build control archive
+    build_tar_xz(pkg_dir / "DEBIAN", control_tar_path)
+
+    # Build data archive
+    build_tar_xz(pkg_dir / "files", data_tar_path)
+
+    # Read archive contents
+    control_data = control_tar_path.read_bytes()
+    data_data = data_tar_path.read_bytes()
+
+    # Create ar archive
+    create_ar_archive(
+        output_deb,
+        [("debian-binary", debian_binary_content), ("control.tar.xz", control_data), ("data.tar.xz", data_data)],
+    )
+
+
+def process_pkg(pkg_name: str) -> str | None:
+    """Process a single package"""
+    try:
+        pkg_dir = BASE_DIR / pkg_name
+        if pkg_dir.exists():
+            shutil.rmtree(pkg_dir)
+        pkg_dir.mkdir()
+
+        files_dir = pkg_dir / "files"
+        debian_dir = pkg_dir / "DEBIAN"
+        files_dir.mkdir()
+        debian_dir.mkdir()
+
+        # Get metadata and files
+        meta = get_package_metadata(pkg_name)
+        files = get_package_files(pkg_name)
+
+        if not files:
+            print(f"[!] No files found for {pkg_name}")
+            return
+
+        # Copy files and create control
+        copy_pkg_files(files, files_dir)
+        create_control_file(debian_dir, meta)
+
+        # Build deb package
+        output_deb = BASE_DIR / f"{pkg_name}.deb"
+        build_deb(pkg_dir, output_deb)
+
+        print(f"[✔] {pkg_name} → {output_deb}")
+
+        # Cleanup
+        shutil.rmtree(pkg_dir)
+        return str(output_deb)
+
+    except Exception as e:
+        print(f"[✖] {pkg_name} FAILED: {e}")
+        return
+
+
+def main() -> None:
+    import sys
+
+    args = sys.argv[1:]
+    pkgs = [p.strip() for p in args] if args else ["python", "mc", "python2"]
+
+    print(f"[+] Building {len(pkgs)} packages\n")
+
+    for pkg in pkgs:
+        process_pkg(pkg)
+
+
+if __name__ == "__main__":
+    main()

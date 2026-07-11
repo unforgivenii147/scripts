@@ -1,0 +1,1 @@
+/data/data/com.termux/files/home/isaac/may/scripts/archive/setup_2.py
