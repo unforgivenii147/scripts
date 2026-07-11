@@ -38,7 +38,7 @@ def extract_source_definitions(mapping: dict) -> dict:
     for file_path, obj_names in files_to_read.items():
         if not file_path.exists():
             continue
-        
+
         content = file_path.read_text(encoding="utf-8")
         tree = ast.parse(content)
         lines = content.splitlines()
@@ -58,6 +58,7 @@ def extract_source_definitions(mapping: dict) -> dict:
 
 class DHImportTransformer(ast.NodeTransformer):
     """AST Transformer to find used dh symbols and remove dh imports."""
+
     def __init__(self):
         self.used_dh_symbols = set()
         self.should_remove = False
@@ -65,14 +66,14 @@ class DHImportTransformer(ast.NodeTransformer):
     def visit_Import(self, node):
         # Look for 'import dh'
         for alias in node.names:
-            if alias.name == 'dh':
+            if alias.name == "dh":
                 # Note: Handles standard 'dh.func()' usages if present
-                pass 
+                pass
         return node
 
     def visit_ImportFrom(self, node):
         # Look for 'from dh import ...'
-        if node.module == 'dh':
+        if node.module == "dh":
             for alias in node.names:
                 self.used_dh_symbols.add(alias.name)
             return None  # Removes the line completely
@@ -82,7 +83,7 @@ class DHImportTransformer(ast.NodeTransformer):
 def process_file(file_path: Path, source_bank: dict):
     """Processes a single python file in place."""
     if file_path.resolve() == Path(__file__).resolve():
-        return # Skip running script itself if placed in the same directory
+        return  # Skip running script itself if placed in the same directory
 
     try:
         content = file_path.read_text(encoding="utf-8")
@@ -94,17 +95,17 @@ def process_file(file_path: Path, source_bank: dict):
         modified_tree = transformer.visit(tree)
 
         if not transformer.used_dh_symbols:
-            return # 'dh' string matched but no explicit imports removed
+            return  # 'dh' string matched but no explicit imports removed
 
         # Generate modified code minus the dh imports
         ast.fix_missing_locations(modified_tree)
         clean_lines = content.splitlines()
-        
+
         # We drop the deleted import lines using structural matching from original lines
         # Instead of unparsing the whole AST (which ruins comments), we surgically patch it.
         import_lines = []
         for node in tree.body:
-            if isinstance(node, ast.ImportFrom) and node.module == 'dh':
+            if isinstance(node, ast.ImportFrom) and node.module == "dh":
                 import_lines.append((node.lineno - 1, node.end_lineno))
 
         # Delete import lines backwards to preserve indexes
@@ -133,14 +134,14 @@ def main():
     print("Mapping source definitions from dh...")
     mapping = build_dh_mapping(DH_SRC_DIR)
     source_bank = extract_source_definitions(mapping)
-    
+
     print("Finding target files recursively...")
     py_files = list(TARGET_DIR.rglob("*.py"))
-    
+
     print(f"Processing {len(py_files)} files using parallel threads...")
     with ThreadPoolExecutor() as executor:
         executor.map(lambda p: process_file(p, source_bank), py_files)
-        
+
     print("Done!")
 
 

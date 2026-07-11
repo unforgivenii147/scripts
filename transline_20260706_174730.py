@@ -1,5 +1,3 @@
-
-
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from deep_translator import GoogleTranslator

@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from deep_translator import GoogleTranslator
 from dh import get_files
 
+
 def translate_line(line: str) -> str:
     try:
         result = GoogleTranslator(source="auto", target="en").translate(line)
@@ -84,9 +85,9 @@ def process_file_batch(files: list[Path], max_workers: int = 12) -> None:
 
 def main():
     root = Path.cwd()
-    args=sys.argv[1:]
-    files=[Path(p) for in args] if args else get_files(cwd)
-    if len(files)==1:
+    args = sys.argv[1:]
+    files = [Path(p) for p in args] if args else get_files(cwd)
+    if len(files) == 1:
         process_file_inplace(files[0])
         sys.exit(0)
     process_file_batch(files, max_workers=4)

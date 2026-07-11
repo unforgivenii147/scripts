@@ -79,6 +79,7 @@ def pattern_9_floyds_triangle():
 # 10. Pascal's Triangle
 def pattern_10_pascals_triangle():
     from math import comb
+
     n = 6
     for i in range(n):
         print("  " * (n - i), end="")

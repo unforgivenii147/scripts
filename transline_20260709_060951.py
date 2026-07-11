@@ -61,7 +61,7 @@ _CHINESE_RANGES = (
     (0x2CEB0, 0x2EBEF),  # CJK Extension F
 )
 
-_CHINESE_PUNCTUATION = set('，。！？；：、""''（）【】《》…—～·　　')
+_CHINESE_PUNCTUATION = set('，。！？；：、""（）【】《》…—～·　　')
 
 
 def is_chinese_char(ch: str) -> bool:
@@ -110,7 +110,7 @@ def reassemble_line(original: str, translations: dict[tuple[int, int], str]) -> 
         last_end = end
     # Add remaining non-Chinese part
     result.append(original[last_end:])
-    return ''.join(result)
+    return "".join(result)
 
 
 # ── encoding-resilient reader ─────────────────────────────────────────────────
@@ -192,7 +192,7 @@ def save_progress(file_path: Path, done: dict, total: int) -> None:
                 serializable_done[str(line_num)] = serializable_segments
             else:
                 serializable_done[str(line_num)] = segments
-        
+
         state = {
             "file": str(file_path),
             "saved_at": datetime.now().isoformat(),
@@ -212,19 +212,19 @@ def load_progress(file_path: Path) -> dict:
         state = json.loads(p.read_text(encoding="utf-8"))
         if Path(state.get("file", "")) != file_path:
             return {}
-        
+
         restored = {}
         for line_num_str, segments in state["translations"].items():
             line_num = int(line_num_str)
             if isinstance(segments, dict):
                 restored_segments = {}
                 for key, trans in segments.items():
-                    start, end = map(int, key.split(','))
+                    start, end = map(int, key.split(","))
                     restored_segments[(start, end)] = trans
                 restored[line_num] = restored_segments
             else:
                 restored[line_num] = segments
-        
+
         total_segments = sum(len(v) if isinstance(v, dict) else 1 for v in restored.values())
         print(f"   🔄 Resuming: {len(restored)} lines with {total_segments} segments already done")
         return restored
@@ -259,7 +259,7 @@ def process_file(path: Path) -> bool:
         return False
 
     lines = text.splitlines(keepends=True)
-    
+
     # Find all lines with Chinese and their segments
     line_segments = {}
     for i, ln in enumerate(lines):
@@ -278,12 +278,12 @@ def process_file(path: Path) -> bool:
 
     # Load any saved progress
     done: dict = load_progress(path)
-    
+
     # Initialize done for lines not yet processed
     for line_idx in line_segments:
         if line_idx not in done:
             done[line_idx] = {}
-    
+
     # Count completed segments
     completed_segments = sum(len(v) if isinstance(v, dict) else 1 for v in done.values())
     segment_count = completed_segments
@@ -293,41 +293,41 @@ def process_file(path: Path) -> bool:
             save_progress(path, done, len(lines))
             print("   💾 Progress saved. Stopping.")
             return False
-        
+
         stripped = lines[line_idx].rstrip("\r\n")
-        
+
         for start, end, chinese_text in segments:
             if _interrupted:
                 save_progress(path, done, len(lines))
                 print("   💾 Progress saved. Stopping.")
                 return False
-            
+
             # Skip if already translated
             if (start, end) in done[line_idx]:
                 continue
-            
+
             # Translate the Chinese segment
             translated, ok = translate_safe(chinese_text)
-            
+
             if ok:
                 done[line_idx][(start, end)] = translated
                 status = "✓"
             else:
                 done[line_idx][(start, end)] = chinese_text  # Keep original on failure
                 status = "✗"
-            
+
             segment_count += 1
-            
+
             # Show progress
             print(
                 f"   [{segment_count:>4}/{total_segments}] {status} line {line_idx + 1}: "
                 f"{chinese_text[:20].strip()!r} → {translated[:20].strip()!r}"
             )
-            
+
             # Periodic save
             if segment_count % PROGRESS_SAVE_EVERY == 0:
                 save_progress(path, done, len(lines))
-            
+
             # Rate-limit buffer
             time.sleep(DELAY_BETWEEN_SEGMENTS)
 
@@ -335,7 +335,7 @@ def process_file(path: Path) -> bool:
     out_lines = []
     for i, line in enumerate(lines):
         if i in done and done[i]:
-            eol = line[len(line.rstrip("\r\n")):]  # preserve \n or \r\n
+            eol = line[len(line.rstrip("\r\n")) :]  # preserve \n or \r\n
             stripped = line.rstrip("\r\n")
             reassembled = reassemble_line(stripped, done[i])
             out_lines.append(reassembled + eol)
@@ -356,7 +356,7 @@ def process_file(path: Path) -> bool:
         return False
 
     drop_progress(path)
-    
+
     # Count failed segments
     failed_segments = 0
     for line_idx, segments in line_segments.items():
@@ -364,7 +364,7 @@ def process_file(path: Path) -> bool:
             for (start, end), trans in done[line_idx].items():
                 if has_chinese(trans):
                     failed_segments += 1
-    
+
     success_segments = total_segments - failed_segments
     print(f"   ✅ Done — {success_segments}/{total_segments} segments translated successfully")
     return True

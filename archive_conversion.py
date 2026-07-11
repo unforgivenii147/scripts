@@ -10,16 +10,17 @@ from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import zstandard as zstd  # pip install zstandard
-import lz4.frame          # pip install lz4
-import py7zr              # pip install py7zr
+import lz4.frame  # pip install lz4
+import py7zr  # pip install py7zr
 
 
 # ---------------- config ----------------
 CHUNK = 1024 * 1024  # 1 MiB
-XZ_PRESET_9 = 9      # lzma preset for FORMAT_XZ
+XZ_PRESET_9 = 9  # lzma preset for FORMAT_XZ
 
 
 # ---------------- helpers ----------------
+
 
 def human_bytes(n: int) -> str:
     sign = "-" if n < 0 else ""
@@ -43,7 +44,7 @@ def dir_files_total_bytes(p: Path) -> int:
 def decode_filename_to_tar_path(src: Path) -> Path:
     # src is like *.tar.<codec> where <codec> is one of the supported ones.
     # return *.tar (no codec)
-    return Path(str(src)[: -len("." + src.suffixes[-1])] )  # not used
+    return Path(str(src)[: -len("." + src.suffixes[-1])])  # not used
 
 
 def tar_stem_and_codec(p: Path) -> tuple[str, str] | None:
@@ -77,11 +78,13 @@ def safe_unlink(path: Path) -> None:
 
 # ---------------- stream codec wrappers (tar bytes) ----------------
 
+
 def open_tar_bytes_reader(src: Path):
     """
     returns a file-like iterator of raw tar bytes from compressed tar.<codec>.
     """
     return src
+
 
 def write_tar_bytes_with_decoder_to_file(src: Path, dst: Path, codec: str) -> None:
     """
@@ -239,6 +242,7 @@ def write_compressed_tar_bytes_from_tar(src_tar: Path, dst: Path, codec: str) ->
 # For py7zr, .tar.7z is treated as: a 7z archive containing the tar bytes as one file named "*.tar".
 # This differs from "7z created from tar bytes as a raw stream" semantics.
 
+
 def convert_tar7z_via_py7zr(src: Path, dst: Path) -> None:
     # src: *.tar.7z ; dst: *.tar.<codec>
     # Extract tar from 7z into a temp .tar, then encode to dst codec.
@@ -270,6 +274,7 @@ def shutil_rmtree_quiet(p: Path) -> None:
     try:
         if p.exists():
             import shutil
+
             shutil.rmtree(p)
     except Exception:
         pass
@@ -279,6 +284,7 @@ def shutil_rmtree_quiet(p: Path) -> None:
 
 SUPPORTED = {"gz", "zst", "xz", "bz2", "lz4", "br", "7z"}
 
+
 # Map codec -> conversion function for (compressed tar bytes) except 7z
 # 7z handled separately
 def convert_one_task(src_str: str, dst_codec: str) -> tuple[str, str, bool, str, int]:
@@ -287,6 +293,7 @@ def convert_one_task(src_str: str, dst_codec: str) -> tuple[str, str, bool, str,
     Returns (src_name, dst_name, ok, message, dst_size_delta_relative_to_src_if_removed_marker_unused)
     """
     import traceback
+
     src = Path(src_str)
     parse = tar_stem_and_codec(src)
     if not parse:
@@ -307,6 +314,7 @@ def convert_one_task(src_str: str, dst_codec: str) -> tuple[str, str, bool, str,
         if src_codec == "7z":
             # Extract tar bytes by going through py7zr into tmp_tar
             import tempfile
+
             tmpdir = Path(tempfile.mkdtemp(prefix="tar7z_dec_"))
             try:
                 with py7zr.SevenZipFile(src, mode="r") as z:
@@ -351,6 +359,7 @@ def convert_one_task(src_str: str, dst_codec: str) -> tuple[str, str, bool, str,
 
 def shutil_copyfile_quiet(src: Path, dst: Path) -> None:
     import shutil
+
     shutil.copyfile(src, dst)
 
 
@@ -363,7 +372,11 @@ def guess_target_codecs(src_codec: str) -> list[str]:
 def main() -> None:
     cwd = Path(".").resolve()
 
-    files = [p for p in cwd.glob("*.tar.*") if len(p.suffixes) >= 2 and p.suffixes[-2] == ".tar" or p.name.endswith(".tar."+p.suffixes[-1])]
+    files = [
+        p
+        for p in cwd.glob("*.tar.*")
+        if len(p.suffixes) >= 2 and p.suffixes[-2] == ".tar" or p.name.endswith(".tar." + p.suffixes[-1])
+    ]
     # The above is messy; just match by splitting:
     tar_inputs = []
     for p in cwd.iterdir():

@@ -28,9 +28,10 @@ def _process_one(whl_path: str) -> str:
             # Rewrite in place by creating a new zip at temp path then replacing
             tmp_path = path.with_suffix(path.suffix + ".tmp")
 
-            with zipfile.ZipFile(path, "r") as src, zipfile.ZipFile(
-                tmp_path, "w", compression=zipfile.ZIP_DEFLATED
-            ) as dst:
+            with (
+                zipfile.ZipFile(path, "r") as src,
+                zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as dst,
+            ):
                 for info in src.infolist():
                     if info.filename == target_name:
                         continue

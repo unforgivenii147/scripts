@@ -15,6 +15,7 @@ TEXT = "LOVE YOU"
 PINK = (255, 77, 109)
 BG = (5, 5, 5)
 
+
 def heart_points():
     points = []
     cx, cy = W // 2, H // 2
@@ -32,14 +33,14 @@ def heart_points():
     for i in range(180):
         t = (i / 180) * math.pi * 2
         x = 16 * math.pow(math.sin(t), 3)
-        y = -(13 * math.cos(t) - 5 * math.cos(2*t) - 2 * math.cos(3*t) - math.cos(4*t))
+        y = -(13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t))
         points.append(make_point(cx + x * scale, cy + y * scale, random.uniform(180, 255)))
 
     for s in [0.2, 0.4, 0.6, 0.8]:
         for i in range(80):
             t = (i / 80) * math.pi * 2
             x = 16 * math.pow(math.sin(t), 3)
-            y = -(13 * math.cos(t) - 5 * math.cos(2*t) - 2 * math.cos(3*t) - math.cos(4*t))
+            y = -(13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t))
             points.append(make_point(cx + x * scale * s, cy + y * scale * s, random.uniform(80, 180)))
 
     return points
